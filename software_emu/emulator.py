@@ -50,6 +50,7 @@ class Chip8EMU(threading.Thread):
         self.sound = 0
         self.key_states = [False]*16
         self.FONT_LOCATION = 0x20
+        self.delay_ticks = 0
 
         self.got_key = False
         self.waiting_for_key = False
@@ -60,6 +61,7 @@ class Chip8EMU(threading.Thread):
         self.display_clear()
         self.parse_file(filename)
         threading.Thread.__init__(self)
+        self.daemon = True
 
         self.data_lock = threading.Lock()
         self.emulate = False
@@ -201,7 +203,7 @@ class Chip8EMU(threading.Thread):
             else:
                 self.regs[0xF] = 0
         elif operator == 6:
-            self.regs[0xF] = Vx & 0x1
+            self.regs[0xF] = self.regs[Vx] & 0x1
             self.regs[Vx] >>= 1
         elif operator == 7:
             self.regs[Vx] = self.regs[Vy] - self.regs[Vx]
@@ -252,7 +254,8 @@ class Chip8EMU(threading.Thread):
 
     def clipregs(self):
         for i, reg in enumerate(self.regs):
-            self.regs[i] = reg & 0xFFFF
+            self.regs[i] = reg & 0xFF
+        self.I &= 0xFFFF
 
     def keys(self, opcode):
         lower = opcode & 0xFF
@@ -291,15 +294,15 @@ class Chip8EMU(threading.Thread):
         elif lower == 0x29:
             self.I = self.FONT_LOCATION + 5*Vxreg
         elif lower == 0x33:
-            num = Vx
-            self.mem[self.I] = (num % 10)
-            self.mem[self.I + 1] = (num % 100) - self.mem[self.I]
-            self.mem[self.I + 2] = num - self.mem[self.I] - self.mem[self.I + 1]
+            num = Vxreg
+            self.mem[self.I + 2] = num % 10
+            self.mem[self.I + 1] = ((num % 100) - self.mem[self.I + 2]) // 10
+            self.mem[self.I] = (num - self.mem[self.I + 2] - self.mem[self.I + 1]) // 100
         elif lower == 0x55:
-            for i, reg in enumerate(self.regs):
-                self.mem[self.I + i] = reg
+            for i in range(Vx + 1):
+                self.mem[self.I + i] = self.regs[i]
         elif lower == 0x65:
-            for i, reg in enumerate(self.regs):
+            for i, reg in enumerate(range(Vx + 1)):
                 self.regs[i] = self.mem[self.I + i]
         else:
             raise Exception(f"opcode {opcode} not implemented!")
@@ -358,13 +361,21 @@ class Chip8EMU(threading.Thread):
         else:
             raise Exception(f"opcode {opcode} not implemented!")
 
+    def _handle_delay_timer(self):
+        self.delay_ticks += 1
+        if self.delay_ticks/self.freq > 1.0/60.0:
+            self.delay_ticks += 1
+            if self.delay_timer > 0:
+                self.delay_timer -= 1
+
     def _tick(self):
         with self.data_lock:
+            self._handle_delay_timer()
             value = self.fetch()
             self.decode(value)
             self.clipregs()
 
-    def set_key(self, key: int, value: bool):
+    def register_key(self, key: int, value: bool):
         """Call this function when a key is pressed
 
         Args:

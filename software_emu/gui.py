@@ -1,11 +1,32 @@
 import argparse
 import logging
+from time import time
 import PySimpleGUI as sg
 from PIL import Image, ImageTk
 import emulator
+from pynput import keyboard
 
 logging.basicConfig(level=logging.DEBUG)
 
+
+KEYMAP = {
+    '1': 0x00,
+    '2': 0x01,
+    '3': 0x02,
+    '4': 0x03,
+    'q': 0x04,
+    'w': 0x05,
+    'e': 0x06,
+    'r': 0x07,
+    'a': 0x08,
+    's': 0x09,
+    'd': 0x0A,
+    'f': 0x0B,
+    'z': 0x0C,
+    'x': 0x0D,
+    'c': 0x0E,
+    'v': 0x0F, 
+}
 
 class Chip8GUI:
     def __init__(self, filename, processor_frequency=1e6):
@@ -13,6 +34,11 @@ class Chip8GUI:
         self.emu.start()
         self.SCREEN_SCALE = 10
         self.running = False
+
+        listener = keyboard.Listener(
+            on_press=self.on_press,
+            on_release=self.on_release)
+        listener.start()
 
     def setup_GUI(self):
         logging.info("Setting up GUI")
@@ -24,11 +50,20 @@ class Chip8GUI:
             [sg.InputText('0', key=f"V{i}", size=(3, None))
              for i in range(0xF)],
             [sg.Text("I"), sg.InputText('0', key=f"I", size=(3, None))],
-            [sg.Button("Tick"), sg.Button("Run")]
+            [sg.Button("Tick"), sg.Button("Run"), sg.Button("test", enable_events=True)]
         ]
         self.window = sg.Window(title="CHIP8 EMU", layout=layout, 
                                 margins=(100, 50), element_justification='c',
-                                return_keyboard_events=True)
+                                return_keyboard_events=True,
+                                use_default_focus=False)
+
+    def on_press(self, key):
+        if key in KEYMAP:
+            self.emu.register_key(KEYMAP[key], True)
+
+    def on_release(self, key):
+        if key in KEYMAP:
+            self.emu.register_key(KEYMAP[key], False)
 
     def update_inputs(self):
         regs = self.emu.get_regs()
@@ -40,13 +75,13 @@ class Chip8GUI:
         self.setup_GUI()
         logging.info("running GUI")
         while True:
-            event, values = self.window.read(timeout=100)
+            event, values = self.window.read(timeout=50)
 
             if event == "Tick":
                 self.emu.tick()
-            if event == "Run":
+            elif event == "Run":
                 self.emu.toggle_live_emu()
-            if event == sg.WIN_CLOSED:
+            elif event == sg.WIN_CLOSED:
                 break
 
             self.update_inputs()
