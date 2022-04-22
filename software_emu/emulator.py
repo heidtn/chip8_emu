@@ -49,6 +49,8 @@ class Chip8EMU:
         self.regs = [0]*16
         self.WIDTH = 64
         self.HEIGHT = 32
+        self.running = False
+        self.SCREEN_SCALE = 10
 
         self.display_clear()
         self.parse_file(filename)
@@ -62,9 +64,9 @@ class Chip8EMU:
             [sg.Image(key="-DISPLAY-")],
             [sg.InputText('0', key=f"V{i}", size=(3, None)) for i in range(0xF)],
             [sg.Text("I"), sg.InputText('0', key=f"I", size=(3, None))],
-            [sg.Button("Tick")]
+            [sg.Button("Tick"), sg.Button("Run")]
         ]
-        self.window = sg.Window(title="CHIP8 EMU", layout=layout, margins=(100, 50))
+        self.window = sg.Window(title="CHIP8 EMU", layout=layout, margins=(100, 50), element_justification='c')
 
     def update_inputs(self):
         for i in range(0xF):
@@ -75,18 +77,20 @@ class Chip8EMU:
         self.setup_GUI()
         logging.info("running GUI")
         while True:
-            event, values = self.window.read()
+            event, values = self.window.read(timeout=10)
 
             print(event, values)
-            if event == "Tick":
+            if event == "Tick" or self.running:
                 self.tick()
+            if event == "Run":
+                self.running = not self.running
             if event == sg.WIN_CLOSED:
                 break
 
             self.update_inputs()
             self.update_image()
 
-            resized = self.display_image.resize((self.WIDTH*5, self.HEIGHT*5))
+            resized = self.display_image.resize((self.WIDTH*self.SCREEN_SCALE, self.SCREEN_SCALE*self.HEIGHT))
             image = ImageTk.PhotoImage(resized)
             self.window["-DISPLAY-"].update(data=image)
 
@@ -95,7 +99,7 @@ class Chip8EMU:
         print(self.display_image.size)
         for x in range(self.WIDTH):
             for y in range(self.HEIGHT):
-                pixels[x, self.HEIGHT - y - 1] = (0, 255*self.display[x][y], 0)
+                pixels[x, y] = (0, 255*self.display[x][y], 0)
 
     def parse_file(self, filename):
         with open(filename, 'rb') as f:
@@ -234,7 +238,7 @@ class Chip8EMU:
             sprite_data = self.mem[self.I + y_change]
             x = self.regs[Vx] % self.WIDTH
             for i in range(8):
-                bit = (sprite_data & (1 << i)) >> i
+                bit = (sprite_data >> (7 - i)) & 0x1
                 if self.display[x][y] == 1 and bit == 1:
                     self.display[x][y] = 0
                     self.regs[0xF] = 0
