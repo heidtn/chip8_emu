@@ -5,33 +5,26 @@ from enum import Enum
 import random
 import PySimpleGUI as sg
 from PIL import Image, ImageTk
-
-
-
-class Chip8State(Enum):
-    FETCH = 1
-    DECODE = 2
-    EXECUTE = 3
-
+import threading
 
 
 NUMBER_FONT = [
-    [0xF0, 0x90, 0x90, 0x90, 0xF0], # 0
-    [0x20, 0x60, 0x20, 0x20, 0x70], # 1
-    [0xF0, 0x10, 0xF0, 0x80, 0xF0], # 2
-    [0xF0, 0x10, 0xF0, 0x10, 0xF0], # 3
-    [0x90, 0x90, 0xF0, 0x10, 0x10], # 4
-    [0xF0, 0x80, 0xF0, 0x10, 0xF0], # 5
-    [0xF0, 0x80, 0xF0, 0x90, 0xF0], # 6
-    [0xF0, 0x10, 0x20, 0x40, 0x40], # 7
-    [0xF0, 0x90, 0xF0, 0x90, 0xF0], # 8
-    [0xF0, 0x90, 0xF0, 0x10, 0xF0], # 9
-    [0xF0, 0x90, 0xF0, 0x90, 0x90], # A
-    [0xE0, 0x90, 0xE0, 0x90, 0xE0], # B
-    [0xF0, 0x80, 0x80, 0x80, 0xF0], # C
-    [0xE0, 0x90, 0x90, 0x90, 0xE0], # D
-    [0xF0, 0x80, 0xF0, 0x80, 0xF0], # E
-    [0xF0, 0x80, 0xF0, 0x80, 0x80], # F
+    [0xF0, 0x90, 0x90, 0x90, 0xF0],  # 0
+    [0x20, 0x60, 0x20, 0x20, 0x70],  # 1
+    [0xF0, 0x10, 0xF0, 0x80, 0xF0],  # 2
+    [0xF0, 0x10, 0xF0, 0x10, 0xF0],  # 3
+    [0x90, 0x90, 0xF0, 0x10, 0x10],  # 4
+    [0xF0, 0x80, 0xF0, 0x10, 0xF0],  # 5
+    [0xF0, 0x80, 0xF0, 0x90, 0xF0],  # 6
+    [0xF0, 0x10, 0x20, 0x40, 0x40],  # 7
+    [0xF0, 0x90, 0xF0, 0x90, 0xF0],  # 8
+    [0xF0, 0x90, 0xF0, 0x10, 0xF0],  # 9
+    [0xF0, 0x90, 0xF0, 0x90, 0x90],  # A
+    [0xE0, 0x90, 0xE0, 0x90, 0xE0],  # B
+    [0xF0, 0x80, 0x80, 0x80, 0xF0],  # C
+    [0xE0, 0x90, 0x90, 0x90, 0xE0],  # D
+    [0xF0, 0x80, 0xF0, 0x80, 0xF0],  # E
+    [0xF0, 0x80, 0xF0, 0x80, 0x80],  # F
 ]
 
 COMMAND_MASK = 0xF000
@@ -39,7 +32,7 @@ COMMAND_MASK = 0xF000
 logging.basicConfig(level=logging.DEBUG)
 
 
-class Chip8EMU:
+class Chip8EMU(threading.Thread):
     def __init__(self, filename, processor_frequency=1e6):
         self.mem = [0]*4096
         self.stack = []
@@ -49,57 +42,12 @@ class Chip8EMU:
         self.regs = [0]*16
         self.WIDTH = 64
         self.HEIGHT = 32
-        self.running = False
-        self.SCREEN_SCALE = 10
 
         self.display_clear()
         self.parse_file(filename)
 
-
-    def setup_GUI(self):
-        logging.info("Setting up GUI")
-        self.display_image = Image.new("RGB", (self.WIDTH, self.HEIGHT), (255, 255, 255))
-
-        layout = [
-            [sg.Image(key="-DISPLAY-")],
-            [sg.InputText('0', key=f"V{i}", size=(3, None)) for i in range(0xF)],
-            [sg.Text("I"), sg.InputText('0', key=f"I", size=(3, None))],
-            [sg.Button("Tick"), sg.Button("Run")]
-        ]
-        self.window = sg.Window(title="CHIP8 EMU", layout=layout, margins=(100, 50), element_justification='c')
-
-    def update_inputs(self):
-        for i in range(0xF):
-            self.window[f"V{i}"].update(self.regs[i])
-        self.window["I"].update(self.I)
-
-    def run(self):
-        self.setup_GUI()
-        logging.info("running GUI")
-        while True:
-            event, values = self.window.read(timeout=10)
-
-            print(event, values)
-            if event == "Tick" or self.running:
-                self.tick()
-            if event == "Run":
-                self.running = not self.running
-            if event == sg.WIN_CLOSED:
-                break
-
-            self.update_inputs()
-            self.update_image()
-
-            resized = self.display_image.resize((self.WIDTH*self.SCREEN_SCALE, self.SCREEN_SCALE*self.HEIGHT))
-            image = ImageTk.PhotoImage(resized)
-            self.window["-DISPLAY-"].update(data=image)
-
-    def update_image(self):
-        pixels = self.display_image.load()
-        print(self.display_image.size)
-        for x in range(self.WIDTH):
-            for y in range(self.HEIGHT):
-                pixels[x, y] = (0, 255*self.display[x][y], 0)
+    def start(self):
+        pass
 
     def parse_file(self, filename):
         with open(filename, 'rb') as f:
@@ -151,7 +99,7 @@ class Chip8EMU:
         val = (opcode & 0x00FF)
         if self.regs[reg] != val:
             self.PC += 2
-            
+
     def regequal(self, opcode):
         Vx = (opcode & 0x0F00) >> 8
         Vy = (opcode & 0x00F0) >> 4
@@ -163,17 +111,17 @@ class Chip8EMU:
         Vy = (opcode & 0x00F0) >> 4
         if self.regs[Vx] != self.regs[Vy]:
             self.PC += 2
-    
+
     def constsetreg(self, opcode):
         reg = (opcode & 0x0F00) >> 8
         val = (opcode & 0x00FF)
         self.regs[reg] = val
-    
+
     def constadd(self, opcode):
         reg = (opcode & 0x0F00) >> 8
         val = (opcode & 0x00FF)
         self.regs[reg] += val
-        
+
     def regmath(self, opcode):
         operator = opcode & 0x000F
         Vx = (opcode & 0x0F00) >> 8
@@ -204,7 +152,7 @@ class Chip8EMU:
             self.regs[Vx] >>= 1
         elif operator == 7:
             self.regs[Vx] = self.regs[Vy] - self.regs[Vx]
-            
+
             if self.regs[Vx] > self.regs[Vy]:
                 self.regs[0xF] = 1
             else:
@@ -252,6 +200,12 @@ class Chip8EMU:
     def clipregs(self):
         for i, reg in enumerate(self.regs):
             self.regs[i] = reg & 0xFFFF
+
+    def system(self, opcode):
+        lower = opcode & 0xFF
+        Vx = (opcode & 0x0F00) >> 8
+        if lower == 0x9E:
+            pass
 
     def decode(self, opcode):
         nibble = self.upper_nibble(opcode)
@@ -307,17 +261,3 @@ class Chip8EMU:
         self.decode(value)
 
         self.clipregs()
-
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("filename")
-
-    args = parser.parse_args()
-
-    emu = Chip8EMU(args.filename)
-    emu.run()
-
-
-if __name__ == "__main__":
-    main()
