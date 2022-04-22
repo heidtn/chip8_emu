@@ -8,6 +8,8 @@ import PySimpleGUI as sg
 from PIL import Image, ImageTk
 import threading
 
+from sympy import false
+
 
 NUMBER_FONT = [
     [0xF0, 0x90, 0x90, 0x90, 0xF0],  # 0
@@ -38,11 +40,22 @@ class Chip8EMU(threading.Thread):
         self.mem = [0]*4096
         self.stack = []
         self.delay_timer = 0
+        self.sound_timer = 0
         self.PC = 512
         self.I = 0
         self.regs = [0]*16
         self.WIDTH = 64
         self.HEIGHT = 32
+        self.delay = 0
+        self.sound = 0
+        self.key_states = [False]*16
+        self.FONT_LOCATION = 0x20
+
+        self.got_key = False
+        self.waiting_for_key = False
+        self.selected_key = 0
+
+        self.load_fonts()
 
         self.display_clear()
         self.parse_file(filename)
@@ -89,6 +102,14 @@ class Chip8EMU(threading.Thread):
 
         for i, byte in enumerate(raw_bytes):
             self.mem[i + 512] = byte
+
+
+    def load_fonts(self):
+        location = self.FONT_LOCATION
+        for number in NUMBER_FONT:
+            for byte in number:
+                self.mem[location] = byte
+                location += 1
 
     def fetch(self):
         val = self.mem[self.PC + 1] | (self.mem[self.PC] << 8)
@@ -233,11 +254,56 @@ class Chip8EMU(threading.Thread):
         for i, reg in enumerate(self.regs):
             self.regs[i] = reg & 0xFFFF
 
+    def keys(self, opcode):
+        lower = opcode & 0xFF
+        Vx = (opcode & 0x0F00) >> 8
+        Vxreg = self.regs[Vx]
+        if lower == 0x9E:
+            if self.key_states[Vxreg]:
+                self.PC += 2
+        elif lower == 0xA1:
+            if not self.key_states[Vxreg]:
+                self.PC += 2
+        else:
+            raise Exception(f"opcode {opcode} not implemented")
+
     def system(self, opcode):
         lower = opcode & 0xFF
         Vx = (opcode & 0x0F00) >> 8
-        if lower == 0x9E:
-            pass
+        Vxreg = self.regs[Vx]
+        if lower == 0x07:
+            self.regs[Vx] = self.delay_timer
+        elif lower == 0x0A:
+            if self.waiting_for_key:
+                if self.got_key:
+                    self.waiting_for_key = False
+                    self.regs[Vx] = self.selected_key
+                    self.PC += 2
+            else:
+                self.waiting_for_key = True
+            self.PC -= 2
+        elif lower == 0x15:
+            self.delay_timer = Vxreg
+        elif lower == 0x18:
+            self.sound_timer = Vxreg
+        elif lower == 0x1E:
+            self.I += Vxreg
+        elif lower == 0x29:
+            self.I = self.FONT_LOCATION + 5*Vxreg
+        elif lower == 0x33:
+            num = Vx
+            self.mem[self.I] = (num % 10)
+            self.mem[self.I + 1] = (num % 100) - self.mem[self.I]
+            self.mem[self.I + 2] = num - self.mem[self.I] - self.mem[self.I + 1]
+        elif lower == 0x55:
+            for i, reg in enumerate(self.regs):
+                self.mem[self.I + i] = reg
+        elif lower == 0x65:
+            for i, reg in enumerate(self.regs):
+                self.regs[i] = self.mem[self.I + i]
+        else:
+            raise Exception(f"opcode {opcode} not implemented!")
+        
 
     def decode(self, opcode):
         nibble = self.upper_nibble(opcode)
@@ -284,15 +350,32 @@ class Chip8EMU(threading.Thread):
             logging.debug("op draw")
             self.draw(opcode)
         elif nibble == 0xE:
-            raise Exception("Not implemented")
+            logging.debug("keys")
+            self.keys(opcode)
         elif nibble == 0xF:
+            logging.debug("system")
             self.system(opcode)
+        else:
+            raise Exception(f"opcode {opcode} not implemented!")
 
     def _tick(self):
         with self.data_lock:
             value = self.fetch()
             self.decode(value)
             self.clipregs()
+
+    def set_key(self, key: int, value: bool):
+        """Call this function when a key is pressed
+
+        Args:
+            key (int): key index from 0x0-0xF
+            value (bool): key value True if pressed, False if released
+        """
+        with self.data_lock:
+            self.key_states[key] = value
+            if self.waiting_for_key:
+                self.got_key = True
+                self.selected_key = key
 
     def tick(self):
         if not self.emulate:
