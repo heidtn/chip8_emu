@@ -231,7 +231,7 @@ class Chip8EMU:
         self.regs[0xF] = 0
         N = opcode & 0x000F
         for y_change in range(N):
-            sprite_data = self.mem[self.I + N]
+            sprite_data = self.mem[self.I + y_change]
             x = self.regs[Vx] % self.WIDTH
             for i in range(8):
                 bit = (sprite_data & (1 << i)) >> i
