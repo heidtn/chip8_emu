@@ -10,6 +10,7 @@ logging.basicConfig(level=logging.DEBUG)
 class Chip8GUI:
     def __init__(self, filename, processor_frequency=1e6):
         self.emu = emulator.Chip8EMU(filename, processor_frequency)
+        self.emu.start()
         self.SCREEN_SCALE = 10
         self.running = False
 
@@ -30,21 +31,21 @@ class Chip8GUI:
                                 return_keyboard_events=True)
 
     def update_inputs(self):
+        regs = self.emu.get_regs()
         for i in range(0xF):
-            self.window[f"V{i}"].update(self.emu.regs[i])
-        self.window["I"].update(self.emu.I)
+            self.window[f"V{i}"].update(regs["regs"][i])
+        self.window["I"].update(regs["I"])
 
     def run(self):
         self.setup_GUI()
         logging.info("running GUI")
         while True:
-            event, values = self.window.read(timeout=10)
+            event, values = self.window.read(timeout=100)
 
-            print(event, values)
-            if event == "Tick" or self.running:
+            if event == "Tick":
                 self.emu.tick()
             if event == "Run":
-                self.running = not self.running
+                self.emu.toggle_live_emu()
             if event == sg.WIN_CLOSED:
                 break
 
@@ -58,10 +59,10 @@ class Chip8GUI:
 
     def update_image(self):
         pixels = self.display_image.load()
-        print(self.display_image.size)
+        display = self.emu.get_display()
         for x in range(self.emu.WIDTH):
             for y in range(self.emu.HEIGHT):
-                pixels[x, y] = (0, 255*self.emu.display[x][y], 0)
+                pixels[x, y] = (0, 255*display[x][y], 0)
 
 
 

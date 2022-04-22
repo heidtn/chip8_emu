@@ -2,6 +2,7 @@ import argparse
 import time
 import logging
 from enum import Enum
+import copy
 import random
 import PySimpleGUI as sg
 from PIL import Image, ImageTk
@@ -33,7 +34,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 
 class Chip8EMU(threading.Thread):
-    def __init__(self, filename, processor_frequency=1e6):
+    def __init__(self, filename, processor_frequency=1e3):
         self.mem = [0]*4096
         self.stack = []
         self.delay_timer = 0
@@ -45,9 +46,40 @@ class Chip8EMU(threading.Thread):
 
         self.display_clear()
         self.parse_file(filename)
+        threading.Thread.__init__(self)
 
-    def start(self):
-        pass
+        self.data_lock = threading.Lock()
+        self.emulate = False
+        self.freq = processor_frequency
+
+    def run(self):
+        while True:
+            if self.emulate:
+                logging.debug("tick")
+                self._tick()
+                time.sleep(1.0/self.freq)        
+            else:
+                time.sleep(0.1)
+    
+    def toggle_live_emu(self):
+        self.emulate = not self.emulate
+    
+    
+    def get_display(self):
+        disp = None
+        with self.data_lock:
+            disp = copy.deepcopy(self.display)
+        return disp
+
+    def get_regs(self):
+        regs = None
+        with self.data_lock:
+            regs = {"regs": copy.deepcopy(self.regs),
+                    "I": self.I,
+                    "stack": copy.deepcopy(self.stack),
+                    "PC": self.PC
+            }
+        return regs
 
     def parse_file(self, filename):
         with open(filename, 'rb') as f:
@@ -256,8 +288,12 @@ class Chip8EMU(threading.Thread):
         elif nibble == 0xF:
             self.system(opcode)
 
-    def tick(self):
-        value = self.fetch()
-        self.decode(value)
+    def _tick(self):
+        with self.data_lock:
+            value = self.fetch()
+            self.decode(value)
+            self.clipregs()
 
-        self.clipregs()
+    def tick(self):
+        if not self.emulate:
+            self._tick()
