@@ -32,11 +32,11 @@ NUMBER_FONT = [
 
 COMMAND_MASK = 0xF000
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 
 class Chip8EMU(threading.Thread):
-    def __init__(self, filename, processor_frequency=1e3):
+    def __init__(self, filename, processor_frequency=700):
         self.mem = [0]*4096
         self.stack = []
         self.delay_timer = 0
@@ -251,6 +251,8 @@ class Chip8EMU(threading.Thread):
                     break
                 x += 1
             y += 1
+            if y >= self.HEIGHT - 1:
+                break
 
     def clipregs(self):
         for i, reg in enumerate(self.regs):
@@ -279,6 +281,7 @@ class Chip8EMU(threading.Thread):
         elif lower == 0x0A:
             if self.waiting_for_key:
                 if self.got_key:
+                    self.got_key = False
                     self.waiting_for_key = False
                     self.regs[Vx] = self.selected_key
                     self.PC += 2
@@ -286,6 +289,7 @@ class Chip8EMU(threading.Thread):
                 self.waiting_for_key = True
             self.PC -= 2
         elif lower == 0x15:
+            print(f"setting delay timer to {Vxreg}")
             self.delay_timer = Vxreg
         elif lower == 0x18:
             self.sound_timer = Vxreg
@@ -362,11 +366,15 @@ class Chip8EMU(threading.Thread):
             raise Exception(f"opcode {opcode} not implemented!")
 
     def _handle_delay_timer(self):
-        self.delay_ticks += 1
-        if self.delay_ticks/self.freq > 1.0/60.0:
+        if self.delay_timer > 0:
             self.delay_ticks += 1
-            if self.delay_timer > 0:
-                self.delay_timer -= 1
+
+            if self.delay_ticks/self.freq > 1.0/60.0/60.0:
+                self.delay_ticks = 0
+                if self.delay_timer > 0:
+                    self.delay_timer -= 1
+        else:
+            self.delay_ticks = 0
 
     def _tick(self):
         with self.data_lock:
@@ -383,6 +391,7 @@ class Chip8EMU(threading.Thread):
             value (bool): key value True if pressed, False if released
         """
         with self.data_lock:
+            logging.debug(f"Setting key {key} to {value}")
             self.key_states[key] = value
             if self.waiting_for_key:
                 self.got_key = True

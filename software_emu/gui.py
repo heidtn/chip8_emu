@@ -3,10 +3,11 @@ import logging
 from time import time
 import PySimpleGUI as sg
 from PIL import Image, ImageTk
+from numpy import chararray
 import emulator
 from pynput import keyboard
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 
 KEYMAP = {
@@ -29,7 +30,7 @@ KEYMAP = {
 }
 
 class Chip8GUI:
-    def __init__(self, filename, processor_frequency=1e6):
+    def __init__(self, filename, processor_frequency=700):
         self.emu = emulator.Chip8EMU(filename, processor_frequency)
         self.emu.start()
         self.SCREEN_SCALE = 10
@@ -58,12 +59,14 @@ class Chip8GUI:
                                 use_default_focus=False)
 
     def on_press(self, key):
-        if key in KEYMAP:
-            self.emu.register_key(KEYMAP[key], True)
+        character = key.char
+        if character in KEYMAP.keys():
+            self.emu.register_key(KEYMAP[character], True)
 
     def on_release(self, key):
-        if key in KEYMAP:
-            self.emu.register_key(KEYMAP[key], False)
+        character = key.char
+        if character in KEYMAP.keys():
+            self.emu.register_key(KEYMAP[character], False)
 
     def update_inputs(self):
         regs = self.emu.get_regs()
