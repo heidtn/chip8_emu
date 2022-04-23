@@ -3,7 +3,6 @@ import logging
 from time import time
 import PySimpleGUI as sg
 from PIL import Image, ImageTk
-from numpy import chararray
 import emulator
 from pynput import keyboard
 

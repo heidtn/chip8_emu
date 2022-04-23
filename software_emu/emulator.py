@@ -208,7 +208,7 @@ class Chip8EMU(threading.Thread):
         elif operator == 7:
             self.regs[Vx] = self.regs[Vy] - self.regs[Vx]
 
-            if self.regs[Vx] > self.regs[Vy]:
+            if self.regs[Vx] < self.regs[Vy]:
                 self.regs[0xF] = 1
             else:
                 self.regs[0xF] = 0
@@ -244,7 +244,7 @@ class Chip8EMU(threading.Thread):
                 bit = (sprite_data >> (7 - i)) & 0x1
                 if self.display[x][y] == 1 and bit == 1:
                     self.display[x][y] = 0
-                    self.regs[0xF] = 0
+                    self.regs[0xF] = 1
                 elif self.display[x][y] == 0 and bit == 1:
                     self.display[x][y] = 1
                 if x >= self.WIDTH - 1:
@@ -295,6 +295,8 @@ class Chip8EMU(threading.Thread):
             self.sound_timer = Vxreg
         elif lower == 0x1E:
             self.I += Vxreg
+            if self.I & 0xF000:
+                self.regs[0xF] = 1
         elif lower == 0x29:
             self.I = self.FONT_LOCATION + 5*Vxreg
         elif lower == 0x33:
